@@ -37,9 +37,11 @@ async function seed() {
     console.log('Seeding initial knowledge nodes...');
     const batch = db.batch();
     for (const node of nodes) {
-        const docRef = db.collection('nodes').doc(node.id.toLowerCase());
+        const docId = node.id.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        const docRef = db.collection('nodes').doc(docId);
         batch.set(docRef, {
             ...node,
+            id: node.id, // Keep the readable ID for display
             updatedAt: FieldValue.serverTimestamp()
         });
     }
