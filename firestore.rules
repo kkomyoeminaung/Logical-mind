@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Validation Blueprints ---
+    function isValidLogicNode(data) {
+      return data.keys().hasAll(['id', 'type', 'groups', 'relations']) 
+        && data.keys().size() <= 6 
+        && data.id is string && data.id.size() <= 128
+        && data.type is string && data.type in ['ENTITY', 'STATE', 'EVENT', 'LOCATION']
+        && data.groups is list && data.groups.size() <= 100
+        && data.relations is list && data.relations.size() <= 100
+        && (data.keys().hasAny(['updatedAt']) ? data.updatedAt is timestamp : true);
+    }
+
+    // --- Collection: Logic Nodes ---
+    match /nodes/{nodeId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && resource.data.id != null;
+      
+      allow create: if isSignedIn() 
+        && isValidId(nodeId)
+        && nodeId == incoming().id
+        && isValidLogicNode(incoming());
+
+      allow update: if isSignedIn()
+        && isValidId(nodeId)
+        && nodeId == incoming().id
+        && isValidLogicNode(incoming())
+        && (
+          incoming().id == existing().id &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['type', 'groups', 'relations', 'updatedAt'])
+        );
+
+      allow delete: if false; 
+    }
+  }
+}

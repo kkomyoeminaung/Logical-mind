@@ -1,0 +1,6 @@
+{
+  "name": "Logical Mind: Non-Neural AI",
+  "description": "A logic-tree based AI system that learns SVO (Subject-Verb-Object) triplets from text and performs recursive pathfinding inference without neural networks.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["NLP", "Logic Engines"]
+}

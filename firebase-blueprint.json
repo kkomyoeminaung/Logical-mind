@@ -1,0 +1,34 @@
+{
+  "entities": {
+    "LogicNode": {
+      "title": "Logic Node",
+      "description": "A node in the symbolic knowledge graph representing an entity, state, event, or location.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["ENTITY", "STATE", "EVENT", "LOCATION"] },
+        "groups": { "type": "array", "items": { "type": "string" } },
+        "relations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "verb": { "type": "string" },
+              "targetId": { "type": "string" },
+              "weight": { "type": "number" }
+            },
+            "required": ["verb", "targetId", "weight"]
+          }
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "type", "groups", "relations"]
+    }
+  },
+  "firestore": {
+    "/nodes/{nodeId}": {
+      "schema": "LogicNode",
+      "description": "Collection of knowledge graph nodes indexed by their unified ID."
+    }
+  }
+}
