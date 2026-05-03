@@ -72,18 +72,18 @@ class InferenceEngine {
     constructor(private kb: LogicEngine) {}
     
     // Recursive reasoning through parent hierarchy
-    query(subject: string, predicate: string): any {
-        return this.kb.findPath(subject, predicate, this.maxDepth); 
+    async query(subject: string, predicate: string): Promise<any> {
+        return await this.kb.findPath(subject, predicate, this.maxDepth); 
     }
 
     // Transitive reasoning: A -> B, B -> C => A -> C (Logical Pathfinding)
-    transitiveReasoning(start: string, chain: string[]): any {
+    async transitiveReasoning(start: string, chain: string[]): Promise<any> {
         let current = start;
         const totalPath: Triplet[] = [];
         let totalCertainty = 1.0;
 
         for (const relation of chain) {
-            const found = this.kb.findPath(current, relation);
+            const found = await this.kb.findPath(current, relation);
             if (!found || found.path.length === 0) return null;
             
             totalPath.push(...found.path);
@@ -186,7 +186,7 @@ class SymbolicChatBot {
             }
             
             this.sessions.updateContext(userId, user_input, learnedTriplets.map(t => t.subject));
-            const knowledgeContext = this.kb.getRelevantContext(user_input);
+            const knowledgeContext = await this.kb.getRelevantContext(user_input);
             const systemMessages = session.history.filter(h => h.user === 'system').slice(initialSystemCount).map(h => h.ai);
             
             if (contradictions > 0) consistency = 'Conflict Resolved';
@@ -208,7 +208,7 @@ class SymbolicChatBot {
         }
 
         // 3. Retrieval & Symbolic Reasoning (Deep Inference)
-        const knowledgeContext = this.kb.getRelevantContext(user_input);
+        const knowledgeContext = await this.kb.getRelevantContext(user_input);
         
         if (process.intent === 'QUERY_ATTRIBUTE' || process.intent === 'QUERY_RELATION' || process.intent === 'SMALLTALK') {
             // Priority: Direct symbolic query with integrated pathfinding
@@ -246,7 +246,7 @@ class SymbolicChatBot {
         this.sessions.updateContext(userId, user_input, learnedTriplets.map(t => t.subject));
         return { 
             response: this.templates.unknown, 
-            context: knowledgeContext,
+            context: await knowledgeContext,
             logs: [`Fallback activated: No symbolic path found for input.`]
         };
     }
@@ -670,28 +670,46 @@ class LogicEngine {
     return bestFound;
   }
 
-    // Natural Language Response Generator
-    private generateBurmeseResponse(result: any, question: string): string {
-        if (!result) return "ဆောရီး၊ ကျွန်တော် အဲဒီအချက်အလက်ကို မသိသေးပါဘူး။ သိအောင် သင်ပေးပါဦး။";
-        
-        if (result.type === 'CONVERSATION') {
-            return `[စနစ်] ${result.explanation}`;
-        }
+  // Natural Language Response Generator
+  private generateBurmeseResponse(result: any, question: string): string {
+    if (!result) return "ဆောရီး၊ ကျွန်တော် အဲဒီအချက်အလက်ကို မသိသေးပါဘူး။ သိအောင် သင်ပေးပါဦး။";
     
-        // Direct Attribute Query results
-        if (result.type === 'DESCRIPTION') {
-            let resp = `${result.subject} နဲ့ပတ်သက်တဲ့ အချက်အလက်တွေကို စုစည်းတင်ပြပေးလိုက်�            return `ဟုတ်ကဲ့၊ ကျွန်တော့်ရဲ့ လော့ဂျစ်စနစ်အရ ${inference} ဖြစ်တာကြောင့် ${steps[steps.length-1]} လို့ ကောက်ချက်ချနိုင်ပါတယ်ခင်ဗျာ။`;
-        }
-    
-        return "အချက်အလက်များကို ခွဲခြမ်းစိပ်ဖြာပြီးပါပြီ။";
+    if (result.type === 'CONVERSATION') {
+        return `[စနစ်] ${result.explanation}`;
     }
+
+    // Direct Attribute Query results
+    if (result.type === 'DESCRIPTION') {
+        let resp = `${result.subject} နဲ့ပတ်သက်တဲ့ အချက်အလက်တွေကို စုစည်းတင်ပြပေးလိုက်ပါတယ်။ \n`;
+        if (result.relations && result.relations.length > 0) {
+            result.relations.forEach((r: any) => {
+                resp += `- ${r.verb} ${r.targetId}\n`;
+            });
+        }
+        if (result.groups && result.groups.length > 0) {
+            resp += `- အမျိုးအစား: ${result.groups.join(', ')}\n`;
+        }
+        if (result.members && result.members.length > 0) {
+            resp += `- ဥပမာများ: ${result.members.slice(0, 5).join(', ')} အစရှိသည်တို့ ဖြစ်ပါတယ်။\n`;
+        }
+        return resp;
+    }
+
+    if (result.path && result.path.length > 0) {
+        const steps = result.path.map((p: any) => `${p.subject} သည် ${p.verb} ${p.object}`);
+        const inference = steps.join('၊ ထို့နောက် ');
+        return `ဟုတ်ကဲ့၊ ကျွန်တော့်ရဲ့ လော့ဂျစ်စနစ်အရ ${inference} ဖြစ်တာကြောင့် ${result.path[result.path.length-1].object} လို့ ကောက်ချက်ချနိုင်ပါတယ်ခင်ဗျာ။`;
+    }
+
+    return "အချက်အလက်များကို ခွဲခြမ်းစိပ်ဖြာပြီးပါပြီ။";
+  }
 
   // Natural Language Query Resolver
   async query(text: string, session?: Session) {
     const cleanText = text.trim();
     
     // 0. Structured Intent Processing
-    const intentData = this.detectIntent(cleanText);
+    const intentData = this.processInput(cleanText, session);
     const { intent, subject, object } = intentData;
 
     let result: any = null;
@@ -791,87 +809,6 @@ class LogicEngine {
       }
 
       return Array.from(new Set(facts)).slice(0, 20);
-  }
-
-  clear() {
-    this.nodes.clear();
-  }
-}u'd use a Firestore Collection Query here)
-            const members: string[] = [];
-            for (const n of this.nodes.values()) {
-                if (n.groups.some(g => g.toLowerCase() === sId)) {
-                    members.push(n.id);
-                }
-            }
-
-            if (node || members.length > 0) {
-               result = { 
-                    type: 'DESCRIPTION', 
-                    subject: node ? node.id : subject, 
-                    relations: node ? node.relations : [], 
-                    groups: node ? node.groups : [],
-                    members: members
-               };
-            }
-         }
-    } else if (intent === 'QUERY_RELATION' && subject && object) {
-        // Case: "A သည် B လား" -> find path
-        result = await this.findPath(subject, object);
-    } 
-    
-    // Fallback if no structured result
-    if (!result) {
-        const engWhatMatch = cleanText.match(/^(?:what|who)\s+(?:is|are)\s+(.*)$/i);
-        if (engWhatMatch) {
-            const sId = engWhatMatch[1].trim().toLowerCase();
-            const node = await this.ensureNode(sId);
-            if (node) {
-                 result = { type: 'DESCRIPTION', subject: node.id, relations: node.relations };
-            }
-        }
-    }
-
-    if (result) {
-        return {
-            ...result,
-            explanation: this.generateBurmeseResponse(result, text)
-        };
-    }
-
-    return null;
-  }
-
-  getTree() {
-    return Array.from(this.nodes.values()).slice(0, 100);
-  }
-
-  // Symbol Retrieval for RAG with Efficiency Optimization
-  async getRelevantContext(text: string): Promise<string[]> {
-      const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 1);
-      const facts: string[] = [];
-      const visited = new Set<string>();
-
-      for (const word of words) {
-          const cleanWord = word.replace(/[.!?၊။,]/g, '');
-          const canonicalName = this.synonyms.get(cleanWord) || cleanWord;
-          const node = await this.ensureNode(canonicalName);
-          
-          if (node && !visited.has(node.id.toLowerCase())) {
-              visited.add(node.id.toLowerCase());
-              const sortedRels = [...node.relations].sort((a, b) => b.weight - a.weight).slice(0, 5);
-              sortedRels.forEach(rel => {
-                  facts.push(`${node.id}, ${rel.verb}, ${rel.targetId}`);
-              });
-              node.groups.slice(0, 3).forEach(async group => {
-                  facts.push(`${node.id}, is_a, ${group}`);
-                  const parent = await this.ensureNode(group.toLowerCase());
-                  if (parent) {
-                      parent.relations.slice(0, 3).forEach(pR => facts.push(`${group}, ${pR.verb}, ${pR.targetId}`));
-                  }
-              });
-          }
-      }
-      return Array.from(new Set(facts)).slice(0, 15);
   }
 
   clear() {
