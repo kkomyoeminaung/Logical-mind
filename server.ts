@@ -310,12 +310,12 @@ class LogicEngine {
       this.nodes.clear();
       
       // Default common knowledge
-      this.addTriplet('human', 'is_property', 'mortal');
-      this.addTriplet('socrates', 'is_a', 'human');
-      this.addTriplet('mammal', 'is_a', 'animal');
-      this.addTriplet('human', 'is_a', 'mammal');
-      this.addTriplet('yangon', 'is_at', 'myanmar');
-      this.addTriplet('myanmar', 'is_a', 'country');
+      await this.addTriplet('human', 'is_property', 'mortal');
+      await this.addTriplet('socrates', 'is_a', 'human');
+      await this.addTriplet('mammal', 'is_a', 'animal');
+      await this.addTriplet('human', 'is_a', 'mammal');
+      await this.addTriplet('yangon', 'is_at', 'myanmar');
+      await this.addTriplet('myanmar', 'is_a', 'country');
 
       const commonTalk = {
           'how are you': 'I am functional and ready to reason!',
@@ -472,13 +472,16 @@ class LogicEngine {
         const oNode = this.nodes.get(finalObject.toLowerCase())!;
         if (!oNode.relations.find(r => r.verb === finalVerb && r.targetId === sId)) {
             oNode.relations.push({ verb: finalVerb, targetId: sId, weight: 15 });
-            this.saveNode(oNode);
+            await this.saveNode(oNode);
         }
     }
 
     // Persist to Cloud Async
-    this.saveNode(sNode);
-    if (oKey !== 'null') this.saveNode(this.nodes.get(oKey)!);
+    await this.saveNode(sNode);
+    if (oKey !== 'null') {
+      const oNode = this.nodes.get(oKey);
+      if (oNode) await this.saveNode(oNode);
+    }
   }
 
   // Structured NLU Processor
