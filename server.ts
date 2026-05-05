@@ -347,10 +347,20 @@ class LogicEngine {
     try {
       const key = node.id.toLowerCase();
       const docKey = key.replace(/[\s\/\\\.#\[\]\*\?!]+/g, '_').replace(/^_+|_+$/g, '') || key;
-      await db.collection('nodes').doc(docKey).set({
-        ...node,
+      const dataToSave: any = {
+        id: node.id,
+        type: node.type,
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      });
+      };
+      
+      if (node.groups && node.groups.length > 0) {
+        dataToSave.groups = admin.firestore.FieldValue.arrayUnion(...node.groups);
+      }
+      if (node.relations && node.relations.length > 0) {
+        dataToSave.relations = admin.firestore.FieldValue.arrayUnion(...node.relations);
+      }
+
+      await db.collection('nodes').doc(docKey).set(dataToSave, { merge: true });
     } catch (err) {
       console.error('[LogicEngine] Save failed:', err);
     }
