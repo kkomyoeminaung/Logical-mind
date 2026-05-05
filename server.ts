@@ -246,7 +246,7 @@ class SymbolicChatBot {
         this.sessions.updateContext(userId, user_input, learnedTriplets.map(t => t.subject));
         return { 
             response: this.templates.unknown, 
-            context: await knowledgeContext,
+            context: knowledgeContext,
             logs: [`Fallback activated: No symbolic path found for input.`]
         };
     }
@@ -261,17 +261,25 @@ class LogicEngine {
 
   // Optimized On-Demand Fetcher for Scale
   private async ensureNode(id: string): Promise<LogicNode | null> {
+    if (!id) return null;
     const key = id.toLowerCase();
     if (this.nodes.has(key)) return this.nodes.get(key)!;
 
     if (db) {
         try {
-            const doc = await db.collection('nodes').doc(key).get();
+            const docKey = key.replace(/[\s\/\\\.#\[\]\*\?!]+/g, '_').replace(/^_+|_+$/g, '') || key;
+            const doc = await db.collection('nodes').doc(docKey).get();
             if (doc.exists) {
                 const data = doc.data() as LogicNode;
+                if (!data.relations) data.relations = [];
+                if (!data.groups) data.groups = [];
                 if (this.nodes.size >= this.cacheLimit) {
-                    const firstKey = this.nodes.keys().next().value;
-                    if (firstKey) this.nodes.delete(firstKey);
+                    const toDelete = Math.floor(this.cacheLimit * 0.1);
+                    const iter = this.nodes.keys();
+                    for (let i = 0; i < toDelete; i++) {
+                        const k = iter.next().value;
+                        if (k) this.nodes.delete(k);
+                    }
                 }
                 this.nodes.set(key, data);
                 return data;
@@ -338,7 +346,8 @@ class LogicEngine {
     if (!db) return;
     try {
       const key = node.id.toLowerCase();
-      await db.collection('nodes').doc(key).set({
+      const docKey = key.replace(/[\s\/\\\.#\[\]\*\?!]+/g, '_').replace(/^_+|_+$/g, '') || key;
+      await db.collection('nodes').doc(docKey).set({
         ...node,
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });
@@ -418,7 +427,7 @@ class LogicEngine {
     if (existing) {
       existing.weight = Math.min(100, existing.weight + 5); 
     } else {
-      sNode.relations.push({ verb: finalVerb, targetId: finalObject, weight: isState ? 30 : 20 });
+      sNode.relations.push({ verb: finalVerb, targetId: finalObject, weight: isState ? 80 : 60 });
     }
 
     // Contradiction Check & Resolution
@@ -471,7 +480,7 @@ class LogicEngine {
         }
         const oNode = this.nodes.get(finalObject.toLowerCase())!;
         if (!oNode.relations.find(r => r.verb === finalVerb && r.targetId === sId)) {
-            oNode.relations.push({ verb: finalVerb, targetId: sId, weight: 15 });
+            oNode.relations.push({ verb: finalVerb, targetId: sId, weight: 50 });
             await this.saveNode(oNode);
         }
     }
@@ -808,7 +817,12 @@ class LogicEngine {
       await Promise.all(tasks);
       
       if (this.nodes.size > 50000) {
-          this.nodes.clear();
+          const toDelete = Math.floor(50000 * 0.1);
+          const iter = this.nodes.keys();
+          for (let i = 0; i < toDelete; i++) {
+              const k = iter.next().value;
+              if (k) this.nodes.delete(k);
+          }
       }
 
       return Array.from(new Set(facts)).slice(0, 20);
@@ -824,6 +838,7 @@ const engine = new LogicEngine();
 // Advanced Multilingual Parser
 function parseText(text: string): {s: string, v: string, o: string}[] {
   const triplets: {s: string, v: string, o: string}[] = [];
+  if (!text) return triplets;
   
   // Handing long sentences: Split by common conjunctions
   const splitters = /\s+(?:and|but|while|then|although|because|ပြီးတော့|လျှင်|သော်လည်း|ဖြစ်စေ|ဖြစ်ပါက)\s+/i;
@@ -993,14 +1008,14 @@ function parseText(text: string): {s: string, v: string, o: string}[] {
           continue;
       }
 
-      // 1. Passive Voice Pattern: "[Noun] was [Verb]ed by [Noun]"
+      // 4. Passive Voice Pattern: "[Noun] was [Verb]ed by [Noun]"
       const passiveMatch = s.match(/^(.*?)\s+(?:is|was|were|has\s+been)\s+(.*?ed)\s+by\s+(.*)$/i);
       if (passiveMatch) {
          triplets.push({ s: passiveMatch[3], v: passiveMatch[2], o: passiveMatch[1] });
          continue;
       }
 
-      // 2. Pattern: "There is/are [Noun] [Location]"
+      // 5. Pattern: "There is/are [Noun] [Location]"
       const locations = 'under|on|in|at|near|above|below|behind|beside|inside|outside|between';
       const thereMatch = s.match(/^There\s+(?:is|are|was|were|has\s+been)\s+(?:a|an|the|some|many|few)?\s*(.*?)\s+((?:' + locations + ').*)$/i);
       if (thereMatch) {
@@ -1073,12 +1088,14 @@ async function startServer() {
   // API Routes
   app.post('/api/chat', async (req, res) => {
       const { text, userId } = req.body;
+      if (!text) return res.status(400).json({ error: 'Text input is required' });
       const result = await chatbot.respond(text, userId || 'default');
       res.json(result);
   });
   
   app.post('/api/learn', async (req, res) => {
     const { text } = req.body;
+    if (!text) return res.status(400).json({ error: 'Text input is required' });
     const learned = parseText(text);
     for (const t of learned) {
         await kb.addTriplet(t.s, t.v, t.o);
@@ -1104,19 +1121,12 @@ async function startServer() {
     // Handle Direct Question if provided
     if (question) {
         const result = await kb.query(question);
-        
-        // Auto-Learn: extract facts from query and response
-        if (result && result.explanation) {
-            const newFacts = parseText(result.explanation);
-            for (const t of newFacts) {
-                await kb.addTriplet(t.s, t.v, t.o);
-            }
-        }
 
         if (result) return res.json(result);
         return res.status(404).json({ error: 'I do not have enough information to answer that yet.' });
     }
 
+    if (!start || !end) return res.status(400).json({ error: 'Start and end are required for pathfinding' });
     // Handle Subject-Object Pathfinding
     const result = await kb.findPath(start, end);
     if (result) {

@@ -37,7 +37,8 @@ async function seed() {
     console.log('Seeding initial knowledge nodes...');
     const batch = db.batch();
     for (const node of nodes) {
-        const docId = node.id.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        const key = node.id.toLowerCase();
+        const docId = key.replace(/[\\s/\\\\.#\\[\\]\\*\\?!]+/g, '_').replace(/^_+|_+$/g, '') || key;
         const docRef = db.collection('nodes').doc(docId);
         batch.set(docRef, {
             ...node,

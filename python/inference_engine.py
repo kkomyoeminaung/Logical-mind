@@ -38,8 +38,8 @@ class InferenceEngine:
 
             # 1. Traversal through Direct Relations
             for verb, obj, weight in self.db.get_relations(current):
-                # Fuzzy weight normalization: default scale is 1-10
-                step_conf = min(1.0, weight / 10.0) 
+                # Fuzzy weight normalization: default scale is 1-100
+                step_conf = min(1.0, weight / 100.0) 
                 new_certainty = certainty * step_conf
                 
                 # Only proceed if this path provides a better certainty than previously visited

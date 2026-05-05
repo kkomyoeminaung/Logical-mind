@@ -6,9 +6,16 @@ from parser import TextParser
 from nlg_manager import NLGManager
 
 def main():
+    if len(sys.argv) < 2:
+        print(json.dumps({"success": False, "error": "No command provided"}))
+        sys.exit(1)
+
     cmd = sys.argv[1]
     
     if cmd == "learn":
+        if len(sys.argv) < 3:
+            print(json.dumps({"success": False, "error": "Usage: bridge.py learn <text>"}))
+            sys.exit(1)
         text = sys.argv[2]
         db = RocksConstructor()
         parser = TextParser()
@@ -20,6 +27,9 @@ def main():
         db.close()
         
     elif cmd == "query":
+        if len(sys.argv) < 4:
+            print(json.dumps({"success": False, "error": "Usage: bridge.py query <start> <target>"}))
+            sys.exit(1)
         start = sys.argv[2]
         target = sys.argv[3]
         db = RocksConstructor()

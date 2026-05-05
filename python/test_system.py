@@ -1,4 +1,4 @@
-from python.main import LogicSystem
+from main import LogicSystem
 import os
 
 def run_test():
