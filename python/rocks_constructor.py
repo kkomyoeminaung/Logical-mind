@@ -23,22 +23,24 @@ class RocksConstructor:
         self.batch = WriteBatch()
         self.batch_size = 0
         self.max_batch_threshold = 50000 
+        self._pending = {}
 
     def add_triplet(self, subject, verb, object_, weight=1):
         """
         Stores relations using a persistent batch mechanism.
         """
-        key = f"{subject}:{verb}:{object_}"
-        # We store the weight as an int. rocksdict handles serialization.
-        current_weight = self.db.get(key, 0)
-        self.batch.put(key, current_weight + weight)
+        key = f"r:{subject}:{verb}:{object_}"
+        # Track pending directly with pending buffer for uncommitted writes
+        current = self._pending.get(key, self.db.get(key, 0))
+        self._pending[key] = current + weight
+        self.batch.put(key, current + weight)
         self.batch_size += 1
         
         if self.batch_size >= self.max_batch_threshold:
             self.flush()
 
     def add_isa_relation(self, child, parent):
-        key = f"group:{child}:{parent}"
+        key = f"g:{child}:{parent}"
         self.batch.put(key, True)
         self.batch_size += 1
 
@@ -48,6 +50,7 @@ class RocksConstructor:
             self.db.write(self.batch)
             self.batch = WriteBatch()
             self.batch_size = 0
+            self._pending.clear()
 
     def get_relations(self, entity):
         """
@@ -55,21 +58,25 @@ class RocksConstructor:
         Uses iterator seek to avoid O(N) full table scans.
         """
         relations = []
-        prefix = f"{entity}:"
+        prefix = f"r:{entity}:"
         
         # O(log N) seek directly to the prefix region
         it = self.db.iter()
-        it.seek(prefix)
+        it.seek(prefix.encode('utf-8') if hasattr(prefix, 'encode') else prefix)
         
         # Iterate only until the prefix mismatch
         for key, weight in it:
-            key_str = str(key)
+            if isinstance(key, bytes):
+                key_str = key.decode('utf-8')
+            else:
+                key_str = str(key)
+                
             if not key_str.startswith(prefix):
                 break
                 
             parts = key_str.split(':')
-            if len(parts) == 3:
-                relations.append((parts[1], parts[2], weight))
+            if len(parts) == 4:
+                relations.append((parts[2], parts[3], weight))
         
         return relations
 
@@ -78,11 +85,16 @@ class RocksConstructor:
         Retrieves all parent groups this entity belongs to via inheritance indexing.
         """
         parents = []
-        prefix = f"group:{entity}:"
+        prefix = f"g:{entity}:"
         it = self.db.iter()
-        it.seek(prefix)
+        it.seek(prefix.encode('utf-8') if hasattr(prefix, 'encode') else prefix)
+        
         for key, _ in it:
-            key_str = str(key)
+            if isinstance(key, bytes):
+                key_str = key.decode('utf-8')
+            else:
+                key_str = str(key)
+                
             if not key_str.startswith(prefix):
                 break
             parts = key_str.split(':')
@@ -91,5 +103,11 @@ class RocksConstructor:
         return parents
 
     def close(self):
-        self.flush()
+        if self.batch_size > 0:
+            print(f"⚠️ Flushing remaining {self.batch_size} uncommitted records...")
+            self.flush()
         self.db.close()
+        print("✅ RocksDB closed safely.")
+
+    def __enter__(self): return self
+    def __exit__(self, exc_type, exc_val, exc_tb): self.close()

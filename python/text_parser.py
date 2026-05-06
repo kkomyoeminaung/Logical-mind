@@ -24,14 +24,14 @@ class TextParser:
             
             # 1. Advanced Myanmar Particle Parsing
             # Pattern A: S Obj V (with particles)
-            sov_match = re.search(r'^(.*?)[ကသည်]\s+(.*?)[ကို]\s+(.*?)[သည်]?$', sentence)
+            sov_match = re.search(r'^(.*?)(?:က|သည်|ဟာ|ကတော့)\s+(.*?)(?:ကို|ကိုတော့|ကိုတော)\s+(.*?)(?:သည်|တယ်|ပါသည်|ပါတယ်|ခဲ့သည်)?$', sentence)
             if sov_match:
                 s, o, v = sov_match.groups()
                 triplets.append((self.normalize(s), self.normalize(v), self.normalize(o)))
                 continue
             
             # Pattern B: S State (is happy)
-            state_match = re.search(r'^(.*?)[ကသည်]\s+(.*?)[သည်]?$', sentence)
+            state_match = re.search(r'^([\w\s]+?)\s+(?:က|သည်|ဟာ)\s+([\w\s]+?)(?:ပါ|သည်|တယ်)?$', sentence)
             if state_match:
                 s, state = state_match.groups()
                 # Treat "is_state" as the implicit verb

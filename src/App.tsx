@@ -10,7 +10,10 @@ import {
   Zap,
   Layout,
   Database,
-  RefreshCw
+  RefreshCw,
+  Volume2,
+  Mic,
+  MicOff
 } from 'lucide-react';
 import { KnowledgeGraph } from './components/KnowledgeGraph';
 import { motion, AnimatePresence } from 'motion/react';
@@ -45,6 +48,8 @@ export default function App() {
   const [consistency, setConsistency] = useState('Nominal');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -153,10 +158,12 @@ export default function App() {
         const data = await resp.json();
         
         if (resp.ok) {
+            const finalizedResponse = data.response;
+
             setConsistency(data.consistency || 'Nominal');
             setMessages(prev => [...prev, { 
                 role: 'assistant', 
-                content: data.response,
+                content: finalizedResponse,
                 type: 'hybrid',
                 logic: data.logic || (data.context && data.context.length > 0 ? { 
                     path: data.context.map((c: string) => {
@@ -195,6 +202,63 @@ export default function App() {
     } finally {
         setIsSearching(false);
     }
+  };
+
+  const speakResponse = (text: string) => {
+    if (isSpeaking) return;
+    setIsSpeaking(true);
+    addLog('System is reading symbolic output...');
+    try {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'my-MM'; // Burmese
+        utterance.onend = () => setIsSpeaking(false);
+        utterance.onerror = () => setIsSpeaking(false);
+        window.speechSynthesis.speak(utterance);
+    } catch (err) {
+        console.error('Speech Error:', err);
+        setIsSpeaking(false);
+    }
+  };
+
+  const toggleListening = () => {
+    if (isListening) {
+        setIsListening(false);
+        window.speechSynthesis.cancel();
+        return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        addLog('Voice recognition not supported in this browser.');
+        return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'my-MM';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onstart = () => {
+        setIsListening(true);
+        addLog('System is listening...');
+    };
+
+    recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setSearchQuery(transcript);
+        setIsListening(false);
+    };
+
+    recognition.onerror = () => {
+        setIsListening(false);
+        addLog('Could not detect speech.');
+    };
+
+    recognition.onend = () => {
+        setIsListening(false);
+    };
+
+    recognition.start();
   };
 
   const [nodeList, setNodeList] = useState<any[]>([]);
@@ -321,26 +385,46 @@ export default function App() {
                                             System Alert
                                         </div>
                                     )}
-                                    <p className={`${msg.type as any === 'system' ? 'text-xs italic' : 'text-base md:text-lg'} leading-relaxed`}>{msg.content}</p>
+                                    <div className="flex justify-between items-start gap-4">
+                                        <p className={`${msg.type as any === 'system' ? 'text-xs italic' : 'text-base md:text-lg'} leading-relaxed flex-1`}>{msg.content}</p>
+                                        {msg.role === 'assistant' && msg.type !== 'system' && (
+                                            <button 
+                                                onClick={() => speakResponse(msg.content)}
+                                                className={`p-2 rounded-full transition-all ${isSpeaking ? 'text-blue-500 animate-pulse' : 'text-black/20 hover:text-blue-500 hover:bg-blue-50'}`}
+                                                title="Read aloud"
+                                            >
+                                                <Volume2 size={18} />
+                                            </button>
+                                        )}
+                                    </div>
                                     
                                     {msg.logic && (
                                         <div className={`mt-4 pt-4 border-t ${msg.role === 'user' ? 'border-white/10' : 'border-black/5'} space-y-3`}>
                                             <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-widest opacity-40">
-                                                <span>Reasoning</span>
+                                                <div className="flex items-center gap-1">
+                                                    <Zap className="w-3 h-3 text-yellow-500 fill-yellow-500" />
+                                                    <span>Reasoning Trace</span>
+                                                </div>
                                                 {msg.logic.certainty && (
                                                     <span className="text-blue-500">{Math.round(msg.logic.certainty * 100)}% Confidence</span>
                                                 )}
                                             </div>
                                             
                                             {msg.logic.path && msg.logic.path.length > 0 && (
-                                                <div className="flex flex-wrap gap-2 pt-1">
-                                                    {msg.logic.path.map((p, i) => (
-                                                        <div key={i} className={`px-3 py-1.5 rounded-full text-[10px] font-medium border ${
-                                                            msg.role === 'user' ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/5'
-                                                        }`}>
-                                                            <span className="opacity-60">{p.subject}</span>
-                                                            <span className="mx-1.5 text-blue-500 font-bold">→</span>
-                                                            <span className="opacity-90">{p.object}</span>
+                                                <div className="flex flex-col gap-2 pt-1">
+                                                    {msg.logic.path.map((p: any, i: number) => (
+                                                        <div key={i} className="flex flex-col gap-1">
+                                                            <div className="flex items-center gap-2 text-[11px]">
+                                                                <span className="w-4 h-4 rounded-full bg-blue-500/10 flex items-center justify-center text-[8px] font-bold text-blue-600 border border-blue-500/20">{i+1}</span>
+                                                                <span className="font-semibold">{p.subject}</span>
+                                                                <span className="text-blue-500 font-bold opacity-40 italic">{p.verb?.replace(/_/g, ' ') || 'is'}</span>
+                                                                <span className="font-semibold">{p.object}</span>
+                                                            </div>
+                                                            {msg.logic.logs && msg.logic.logs[i] && (
+                                                                <p className={`text-[10px] ml-6 leading-relaxed ${msg.role === 'user' ? 'text-white/60' : 'text-black/50'}`}>
+                                                                    {msg.logic.logs[i]}
+                                                                </p>
+                                                            )}
                                                         </div>
                                                     ))}
                                                 </div>
@@ -371,6 +455,13 @@ export default function App() {
                             <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
                                 <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 hover:bg-black/5 rounded-full text-blue-600 transition-colors">
                                     <Database size={18} />
+                                </button>
+                                <button 
+                                    type="button" 
+                                    onClick={toggleListening}
+                                    className={`p-2 rounded-full transition-all ${isListening ? 'bg-red-500 text-white animate-pulse' : 'hover:bg-black/5 text-blue-600'}`}
+                                >
+                                    {isListening ? <MicOff size={18} /> : <Mic size={18} />}
                                 </button>
                                 <Terminal className="w-5 h-5 text-blue-600 opacity-60" />
                             </div>

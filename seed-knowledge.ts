@@ -1,4 +1,4 @@
-import { initializeApp } from 'firebase-admin/app';
+import * as admin from 'firebase-admin';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import fs from 'fs';
 import path from 'path';
@@ -11,11 +11,16 @@ async function seed() {
     }
 
     const firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    initializeApp({
-        projectId: firebaseConfig.projectId,
-    });
+    let app;
+    if (!admin.apps.length) {
+        app = admin.initializeApp({
+            projectId: firebaseConfig.projectId,
+        });
+    } else {
+        app = admin.apps[0];
+    }
 
-    const db = getFirestore(firebaseConfig.firestoreDatabaseId);
+    const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
     const nodes = [
         { id: 'Socrates', type: 'ENTITY', groups: ['Human'], relations: [] },
         { id: 'Human', type: 'ENTITY', groups: ['Mortal'], relations: [] },
@@ -38,7 +43,7 @@ async function seed() {
     const batch = db.batch();
     for (const node of nodes) {
         const key = node.id.toLowerCase();
-        const docId = key.replace(/[\\s/\\\\.#\\[\\]\\*\\?!]+/g, '_').replace(/^_+|_+$/g, '') || key;
+        const docId = key.replace(/[\s\/\\.#\[\]\*\?!]+/g, '_').replace(/^_+|_+$/g, '') || key;
         const docRef = db.collection('nodes').doc(docId);
         batch.set(docRef, {
             ...node,

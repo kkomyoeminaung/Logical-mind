@@ -27,18 +27,17 @@ service cloud.firestore {
     // --- Validation Blueprints ---
     function isValidLogicNode(data) {
       return data.keys().hasAll(['id', 'type', 'groups', 'relations']) 
-        && data.keys().size() <= 6 
         && data.id is string && data.id.size() <= 128
         && data.type is string && data.type in ['ENTITY', 'STATE', 'EVENT', 'LOCATION']
         && data.groups is list && data.groups.size() <= 100
         && data.relations is list && data.relations.size() <= 100
-        && (data.keys().hasAny(['updatedAt']) ? data.updatedAt is timestamp : true);
+        && (data.keys().hasAny(['updatedAt']) ? data.updatedAt == request.time : true);
     }
 
     // --- Collection: Logic Nodes ---
     match /nodes/{nodeId} {
       allow get: if isSignedIn();
-      allow list: if isSignedIn() && resource.data.id != null;
+      allow list: if isSignedIn();
       
       allow create: if isSignedIn() 
         && isValidId(nodeId)

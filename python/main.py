@@ -1,10 +1,17 @@
 # Main entry point optimized for massive datasets
 import multiprocessing
 from concurrent.futures import ProcessPoolExecutor
-from parser import TextParser
+from text_parser import TextParser
 from rocks_constructor import RocksConstructor
 from inference_engine import InferenceEngine
 from nlg_manager import NLGManager
+
+def _process_chunk_worker(chunk):
+    """
+    Standalone function for child processes to parse text.
+    """
+    parser = TextParser()
+    return parser.extract_svo(chunk)
 
 class LogicSystem:
     def __init__(self):
@@ -12,13 +19,6 @@ class LogicSystem:
         self.db = RocksConstructor()
         self.engine = InferenceEngine(self.db)
         self.nlg = NLGManager()
-
-    def process_chunk(self, chunk):
-        """
-        Standalone function for child processes to parse text.
-        """
-        parser = TextParser()
-        return parser.extract_svo(chunk)
 
     def learn_from_large_file(self, filename, chunk_size=100000):
         """
@@ -43,7 +43,7 @@ class LogicSystem:
                 sub_chunks = [lines[i:i + chunk_len] for i in range(0, len(lines), chunk_len)]
                 
                 with ProcessPoolExecutor(max_workers=num_cores) as executor:
-                    results = list(executor.map(self.process_chunk, [" ".join(sc) for sc in sub_chunks]))
+                    results = list(executor.map(_process_chunk_worker, [" ".join(sc) for sc in sub_chunks]))
                 
                 # Sequential write to RocksDB (I/O bound)
                 for triplets in results:

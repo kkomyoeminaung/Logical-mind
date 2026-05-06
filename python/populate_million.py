@@ -7,7 +7,8 @@ import time
 
 def populate_million_facts():
     print("မြန်မာဘာသာ အခြေခံ logic များ ထည့်သွင်းနေသည်...")
-    constructor = RocksConstructor(db_path="./logic_tree.db")
+    db_path = os.environ.get("DB_PATH", "./logic_tree.db")
+    constructor = RocksConstructor(db_path=db_path)
     
     start_time = time.time()
     

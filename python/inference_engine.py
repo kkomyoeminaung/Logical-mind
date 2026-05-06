@@ -14,8 +14,10 @@ class InferenceEngine:
         Finds the strongest logical connection between two entities using BFS.
         Implements an OR Gate logic by seeking the highest certainty path.
         """
-        # Queue stores: (current_node, path_to_node, certainty_score)
-        queue = deque([(start_node, [], 1.0)])
+        import heapq
+        counter = 0
+        # Queue stores: (-certainty, counter, current_node, path_to_node, certainty_score)
+        queue = [(-1.0, counter, start_node, [], 1.0)]
         
         # Track the best certainty found so far for each node to allow path optimization
         best_certainties = {start_node: 1.0}
@@ -24,7 +26,7 @@ class InferenceEngine:
         final_certainty = 0.0
 
         while queue:
-            current, path, certainty = queue.popleft()
+            _, _, current, path, certainty = heapq.heappop(queue)
 
             # If we reached the target, check if this path is stronger than what we found
             if current == target_node and path:
@@ -45,7 +47,8 @@ class InferenceEngine:
                 # Only proceed if this path provides a better certainty than previously visited
                 if obj not in best_certainties or new_certainty > best_certainties[obj]:
                     best_certainties[obj] = new_certainty
-                    queue.append((obj, path + [(current, verb, obj)], new_certainty))
+                    counter += 1
+                    heapq.heappush(queue, (-new_certainty, counter, obj, path + [(current, verb, obj)], new_certainty))
             
             # 2. Traversal through Inheritance (Is-a groups)
             # Child nodes inherit parent properties without losing certainty
@@ -53,6 +56,7 @@ class InferenceEngine:
             for parent in parents:
                 if parent not in best_certainties or certainty > best_certainties[parent]:
                     best_certainties[parent] = certainty
-                    queue.append((parent, path + [(current, "is_a", parent)], certainty))
+                    counter += 1
+                    heapq.heappush(queue, (-certainty, counter, parent, path + [(current, "is_a", parent)], certainty))
 
         return final_path, final_certainty

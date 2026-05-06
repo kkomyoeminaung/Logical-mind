@@ -11,6 +11,7 @@ def run_test():
 
     system = LogicSystem()
     system.db = system.db.__class__(db_path) # Direct override for test
+    system.engine = system.engine.__class__(system.db) # Rebind engine too
     
     print("\n[Step 1] Learning facts...")
     # Direct injection for testing
