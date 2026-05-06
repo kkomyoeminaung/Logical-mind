@@ -873,15 +873,72 @@ class LogicEngine {
       
       if (!(await this.ensureNode(sId))) return null;
 
-      // Priority Queue for BFS (High Certainty First)
+      // Priority Queue for BFS (High Certainty First) using Binary Heap
       class PathPriorityQueue {
           private heap: any[] = [];
+          
           push(item: any) {
               this.heap.push(item);
-              this.heap.sort((a, b) => b.certainty - a.certainty);
+              this._bubbleUp(this.heap.length - 1);
           }
-          pop() { return this.heap.shift(); }
+          
+          pop() {
+              if (this.heap.length === 0) return undefined;
+              const top = this.heap[0];
+              const bottom = this.heap.pop();
+              if (this.heap.length > 0) {
+                  this.heap[0] = bottom;
+                  this._sinkDown(0);
+              }
+              return top;
+          }
+          
           get length() { return this.heap.length; }
+
+          private _bubbleUp(index: number) {
+              const element = this.heap[index];
+              while (index > 0) {
+                  const parentIndex = Math.floor((index - 1) / 2);
+                  const parent = this.heap[parentIndex];
+                  if (element.certainty <= parent.certainty) break;
+                  this.heap[index] = parent;
+                  index = parentIndex;
+              }
+              this.heap[index] = element;
+          }
+
+          private _sinkDown(index: number) {
+              const length = this.heap.length;
+              const element = this.heap[index];
+              while (true) {
+                  let leftChildIndex = 2 * index + 1;
+                  let rightChildIndex = 2 * index + 2;
+                  let leftChild, rightChild;
+                  let swap = null;
+
+                  if (leftChildIndex < length) {
+                      leftChild = this.heap[leftChildIndex];
+                      if (leftChild.certainty > element.certainty) {
+                          swap = leftChildIndex;
+                      }
+                  }
+
+                  if (rightChildIndex < length) {
+                      rightChild = this.heap[rightChildIndex];
+                      if (
+                          (swap === null && rightChild.certainty > element.certainty) ||
+                          (swap !== null && rightChild.certainty > (leftChild as any).certainty)
+                      ) {
+                          swap = rightChildIndex;
+                      }
+                  }
+
+                  if (swap === null) break;
+                  this.heap[index] = this.heap[swap];
+                  index = swap;
+              }
+              this.heap[index] = element;
+          }
       }
 
       const queue = new PathPriorityQueue();

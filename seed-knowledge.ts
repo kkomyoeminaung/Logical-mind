@@ -42,8 +42,18 @@ async function seed() {
     console.log('Seeding initial knowledge nodes...');
     const batch = db.batch();
     for (const node of nodes) {
-        const key = node.id.toLowerCase();
-        const docId = key.replace(/[\s\/\\.#\[\]\*\?!]+/g, '_').replace(/^_+|_+$/g, '') || key;
+        const key = node.id.toLowerCase().trim();
+        let docId = key;
+        
+        // Handle Myanmar/Non-ASCII characters safely using MD5
+        if (/[^\x00-\x7F]/.test(key)) {
+            const crypto = require('crypto');
+            docId = 'my_' + crypto.createHash('md5').update(key).digest('hex').substring(0, 16);
+        } else {
+            docId = key.replace(/[\s\/\\\.#\[\]\*\?!]+/g, '_').replace(/^_+|_+$/g, '') || key;
+            docId = docId.substring(0, 128);
+        }
+
         const docRef = db.collection('nodes').doc(docId);
         batch.set(docRef, {
             ...node,

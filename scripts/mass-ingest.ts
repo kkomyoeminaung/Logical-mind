@@ -65,17 +65,39 @@ async function generateBatch(category: string) {
         const batch = db.batch();
         
         for (const t of triplets) {
-            const id = Buffer.from(`${t.s}-${t.v}-${t.o}`).toString('base64').substring(0, 50);
-            const ref = db.collection('nodes').doc(id);
-            batch.set(ref, {
-                subject: t.s.toLowerCase().trim(),
-                verb: t.v.toLowerCase().trim(),
-                targetId: t.o.toLowerCase().trim(),
-                fullSentence: t.f,
-                weight: 1.0,
-                source: 'curated_expansion',
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
+            const subject = t.s.toLowerCase().trim();
+            const verb = t.v.toLowerCase().trim();
+            const target = t.o.toLowerCase().trim();
+            
+            // Use same sanitization as server.ts
+            let docId = subject;
+            if (/[^\x00-\x7F]/.test(subject)) {
+                const crypto = require('crypto');
+                docId = 'my_' + crypto.createHash('md5').update(subject).digest('hex').substring(0, 16);
+            } else {
+                docId = subject.replace(/[\s\/\\\.#\[\]\*\?!]+/g, '_').replace(/^_+|_+$/g, '') || subject;
+                docId = docId.substring(0, 128);
+            }
+
+            const ref = db.collection('nodes').doc(docId);
+            const updateData: any = {
+                id: t.s,
+                type: 'ENTITY',
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            };
+
+            if (verb === 'is_a') {
+                updateData.groups = admin.firestore.FieldValue.arrayUnion(target);
+            } else {
+                updateData.relations = admin.firestore.FieldValue.arrayUnion({
+                    verb: verb,
+                    targetId: target,
+                    sentence: t.f,
+                    weight: 1.0
+                });
+            }
+
+            batch.set(ref, updateData, { merge: true });
             count++;
         }
         await batch.commit();

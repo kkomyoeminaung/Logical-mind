@@ -26,11 +26,12 @@ service cloud.firestore {
 
     // --- Validation Blueprints ---
     function isValidLogicNode(data) {
-      return data.keys().hasAll(['id', 'type', 'groups', 'relations']) 
+      return data.keys().hasAll(['id', 'type']) 
         && data.id is string && data.id.size() <= 128
         && data.type is string && data.type in ['ENTITY', 'STATE', 'EVENT', 'LOCATION']
-        && data.groups is list && data.groups.size() <= 100
-        && data.relations is list && data.relations.size() <= 100
+        && (data.keys().hasAny(['name']) ? data.name is string && data.name.size() <= 256 : true)
+        && (data.keys().hasAny(['groups']) ? data.groups is list && data.groups.size() <= 100 : true)
+        && (data.keys().hasAny(['relations']) ? data.relations is list && data.relations.size() <= 100 : true)
         && (data.keys().hasAny(['updatedAt']) ? data.updatedAt == request.time : true);
     }
 
@@ -50,7 +51,7 @@ service cloud.firestore {
         && isValidLogicNode(incoming())
         && (
           incoming().id == existing().id &&
-          incoming().diff(existing()).affectedKeys().hasOnly(['type', 'groups', 'relations', 'updatedAt'])
+          incoming().diff(existing()).affectedKeys().hasOnly(['type', 'name', 'groups', 'relations', 'updatedAt'])
         );
 
       allow delete: if false; 
